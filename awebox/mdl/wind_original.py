@@ -34,6 +34,7 @@ from awebox.logger.logger import Logger as awelogger
 import awebox.tools.vector_operations as vect_op
 import awebox.tools.lagr_interpol as lagr_interpol
 
+
 class Wind:
     def __init__(self, wind_model_options, params):
         self.__options = wind_model_options
@@ -41,9 +42,8 @@ class Wind:
         if self.__options['model'] == 'datafile':
             self.find_u_polynomial_from_datafile()
             # self.find_p_polynomial_from_datafile(params) # pressure is set as constant for now
-        elif self.__options['model'] == 'WRF':
-            self.find_u_polynomial_from_WRFfile()
-            # self.find_p_polynomial_from_datafile(params) # pressure is set as constant for now
+
+        self.__type_incompatibility_warning_already_given = False
 
     def get_velocity(self, zz):
         params = self.__params.prefix['theta0','wind']
@@ -53,21 +53,29 @@ class Wind:
 
         xhat = vect_op.xhat_np()
 
-        u_ref = params['u_ref']
-        z_ref = params['z_ref']
-        z0_air = params['log_wind', 'z0_air']
-        exp_ref = params['power_wind', 'exp_ref']
+        if isinstance(zz, cas.SX):
+            u_ref = params['u_ref']
+            z_ref = params['z_ref']
+            z0_air = params['log_wind', 'z0_air']
+            exp_ref = params['power_wind', 'exp_ref']
+        else:
+            u_ref = options['u_ref']
+            z_ref = options['z_ref']
+            z0_air = options['log_wind']['z0_air']
+            exp_ref = options['power_wind']['exp_ref']
+
+            if not self.__type_incompatibility_warning_already_given:
+                message = 'to prevent casadi type incompatibility, wind parameters are imported ' \
+                          'directly from options. this may interfere with expected operation, especially in sweeps.'
+                awelogger.logger.warning(message)
+                self.__type_incompatibility_warning_already_given = True
 
         if model in ['log_wind', 'power', 'uniform']:
-            u = get_speed(model, u_ref, z_ref, z0_air, exp_ref, zz) * xhat
+            u_val = get_speed(model, u_ref, z_ref, z0_air, exp_ref, zz)
+            u = u_val * xhat
 
-        elif model in ['datafile','WRF']:
-            # WRF_heights_data = options['WRF_heightsdata']
-            # WRF_wind_data = options['WRF_winddata']
+        elif model == 'datafile':
             u = self.get_velocity_from_datafile(zz)
-            
-        # elif model == 'WRF':
-        #     u = self.get_velocity_from_datafile(zz)
 
         else:
             raise ValueError('unsupported atmospheric option chosen: %s', model)
@@ -113,40 +121,6 @@ class Wind:
 
         self.taux_opt = taux_opt
         self.tauy_opt = tauy_opt
-           
-    def find_u_polynomial_from_WRFfile(self):
-        """_data description:
-            Data from WRF in Pritzwalk & FINO3 interpolated to certain heights.
-            See: https://zenodo.org/record/4292507#.X8Foo8J6qGM
-
-        winddata:       x - main wind direction; y - deviation wind direction
-        heightsdata:    heights in m above ground
-    
-        """
-        options = self.__options
-        # heightsdata  = options['WRF_heightsdata']
-        # featuresdata = options['WRF_winddata']
-
-        # create x and y wind component
-        
-        
-        # xwind = np.array(options['user_options']['wind']['WRF_winddata'][:,0], dtype=float)
-        # ywind = np.array(options['user_options']['wind']['WRF_winddata'][:,1], dtype=float)
-        # self.heights = options['user_options']['wind']['WRF_heightsdata']
-        
-        print (options.keys())
-        xwind = np.array(options['WRF_winddata'][:,0], dtype=float)
-        ywind = np.array(options['WRF_winddata'][:,1], dtype=float)
-        self.heights = options['WRF_heightsdata']
-            
-        # create the function of the lagrange polynomial for x and y wind
-        # and give out the polynomial parameters, respectively.
-        _, taux_opt = lagr_interpol.smooth_lagrange_poly(self.heights, xwind)
-        _, tauy_opt = lagr_interpol.smooth_lagrange_poly(self.heights, ywind)
-
-        self.taux_opt = taux_opt
-        self.tauy_opt = tauy_opt
-        
 
     def find_p_polynomial_from_datafile(self):
         options = self.__options
@@ -185,44 +159,6 @@ class Wind:
         u_wind = cas.vertcat(x_component, y_component, z_component)
         return u_wind
 
-    # def get_WRF_velocity(self, zz):
-    
-    #     """_data description:
-    #         Data from WRF in Pritzwalk & FINO3 interpolated to certain heights.
-    #         See: https://zenodo.org/record/4292507#.X8Foo8J6qGM
-    
-    #     winddata:       x - main wind direction; y - deviation wind direction
-    #     heightsdata:    heights in m above ground
-    
-    #     """
-    #     import awebox.tools.lagr_interpol as lagr_interpol
-    #     import numpy as np
-    #     options = self.__options
-    #     heightsdata  = options['WRF_heightsdata']
-    #     featuresdata = options['WRF_winddata']
-    
-    #     # create x and y wind component
-    #     xwind = np.array(featuresdata[:,0], dtype=float)
-    #     ywind = np.array(featuresdata[:,1], dtype=float)
-            
-    #     # create the function of the lagrange polynomial for x and y wind
-    #     # and give out the polynomial parameters, respectively.
-    #     _, taux_opt = lagr_interpol.smooth_lagrange_poly(WRF_heightsdata, xwind)
-    #     _, tauy_opt = lagr_interpol.smooth_lagrange_poly(WRF_heightsdata, ywind)
-    
-    #     # self.taux_opt = taux_opt
-    #     # self.tauy_opt = tauy_opt
-        
-    #     # generate the lagrange polynomial with the 'optimized' poly. parameters
-    #     Lagr_x_fun = lagr_interpol.lagrange_poly(WRF_heightsdata, taux_opt)
-    #     Lagr_y_fun = lagr_interpol.lagrange_poly(WRF_heightsdata, tauy_opt)
-    #     # compute the x,y,z components
-    #     x_component = Lagr_x_fun(zz)
-    #     y_component = Lagr_y_fun(zz)
-    #     z_component = 0.
-    
-    #     u_wind = cas.vertcat(x_component, y_component, z_component)
-    #     return u_wind
     @property
     def options(self):
         return self.__options
@@ -232,50 +168,11 @@ class Wind:
         awelogger.logger.warning('Cannot set options object.')
 
 
-def get_WRF_velocity(WRF_heightsdata,WRF_winddata, zz):
-
-    """_data description:
-        Data from WRF in Pritzwalk & FINO3 interpolated to certain heights.
-        See: https://zenodo.org/record/4292507#.X8Foo8J6qGM
-
-    winddata:       x - main wind direction; y - deviation wind direction
-    heightsdata:    heights in m above ground
-
-    """
-    import awebox.tools.lagr_interpol as lagr_interpol
-    import numpy as np
-    # options = self.__options
-    # heightsdata  = options['WRF_heightsdata']
-    # featuresdata = options['WRF_winddata']
-
-    # create x and y wind component
-    xwind = np.array(WRF_winddata[:,0], dtype=float)
-    ywind = np.array(WRF_winddata[:,1], dtype=float)
-        
-    # create the function of the lagrange polynomial for x and y wind
-    # and give out the polynomial parameters, respectively.
-    _, taux_opt = lagr_interpol.smooth_lagrange_poly(WRF_heightsdata, xwind)
-    _, tauy_opt = lagr_interpol.smooth_lagrange_poly(WRF_heightsdata, ywind)
-
-    # self.taux_opt = taux_opt
-    # self.tauy_opt = tauy_opt
-    
-    # generate the lagrange polynomial with the 'optimized' poly. parameters
-    Lagr_x_fun = lagr_interpol.lagrange_poly(WRF_heightsdata, taux_opt)
-    Lagr_y_fun = lagr_interpol.lagrange_poly(WRF_heightsdata, tauy_opt)
-    # compute the x,y,z components
-    x_component = Lagr_x_fun(zz)
-    y_component = Lagr_y_fun(zz)
-    z_component = 0.
-
-    u_wind = cas.vertcat(x_component, y_component, z_component)
-    return np.linalg.norm(u_wind)
-
 def get_speed(model, u_ref, z_ref, z0_air, exp_ref, zz):
-    import casadi.tools as cas
 
     # approximates the maximum of (zz vs. 0)
-    z_cropped = vect_op.smooth_abs(zz, epsilon=z0_air)
+    epsilon = 1.
+    z_cropped = vect_op.smooth_abs(zz, epsilon=epsilon)
 
     if model == 'log_wind':
 
@@ -284,27 +181,15 @@ def get_speed(model, u_ref, z_ref, z0_air, exp_ref, zz):
         # but, the values will be smaller in base 10 (since we're describing
         # altitude differences), which makes convergence nicer.
         # u = u_ref * np.log10(zz / z0_air) / np.log10(z_ref / z0_air)
-        
-        # u = cas.vertcat(u_ref * np.log10(z_cropped / z0_air) / np.log10(z_ref / z0_air), y_component, z_component)
-        u = u_ref * np.log10(z_cropped / z0_air) / np.log10(z_ref / z0_air)
+        u = u_ref * cas.log10(z_cropped / z0_air) / cas.log10(z_ref / z0_air)
 
     elif model == 'power':
-        u = u_ref * (zz / z_ref) ** exp_ref
-        # u = cas.vertcat(u_ref * (z_cropped / z_ref) ** exp_ref, 0, 0)
+        # u = u_ref * (zz / z_ref) ** exp_ref
+        u = u_ref * (z_cropped / z_ref) ** exp_ref
 
     elif model == 'uniform':
-
         u = u_ref
-        # u = cas.vertcat(u_ref, 0, 0)
 
-    # elif model == 'WRF':
-    #     # change to interpolate WRF data as above, but without using the class.... I don't know how the class works anyways 
-
-    #     WRF_heights_data = options['WRF_heightsdata']
-    #     WRF_wind_data = options['WRF_winddata']
-    #     print(WRF_wind_data)
-    #     u = find_u_polynomial_from_WRFfile()
-        
     else:
         raise ValueError('unsupported atmospheric option chosen: %s', model)
 

@@ -226,7 +226,15 @@ def get_wind_speed(init_options, zz):
     z_ref = init_options['model']['wind_z_ref']
     z0_air = init_options['model']['wind_z0_air']
     exp_ref = init_options['model']['wind_exp_ref']
-
+    
+    if wind_model == 'WRF':
+        
+        wind_model = 'uniform'
+        
+    #     WRF_heightsdata     = init_options['WRF_heightsdata']
+    #     WRF_winddata        = init_options['WRF_winddata']
+    #     uu = wind.get_WRF_velocity(WRF_heightsdata,WRF_winddata, zz)
+    # else:
     uu = wind.get_speed(wind_model, u_ref, z_ref, z0_air, exp_ref, zz) * vect_op.xhat_np()
 
     return uu

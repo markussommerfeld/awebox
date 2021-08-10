@@ -856,6 +856,8 @@ def build_wind_options(options, options_tree, fixed_params):
     options_tree.append(('model', 'wind', None, 'u_ref', u_ref, ('reference wind speed [m/s]', None),'x'))
     options_tree.append(('model', 'wind', None, 'atmosphere_heightsdata', options['user_options']['wind']['atmosphere_heightsdata'],('data for the heights at this time instant', None),'x'))
     options_tree.append(('model', 'wind', None, 'atmosphere_featuresdata', options['user_options']['wind']['atmosphere_featuresdata'],('data for the features at this time instant', None),'x'))
+    options_tree.append(('model', 'wind', None, 'WRF_heightsdata', options['user_options']['wind']['WRF_heightsdata'],('WRF data for the heights at this time instant', None),'x'))
+    options_tree.append(('model', 'wind', None, 'WRF_winddata', options['user_options']['wind']['WRF_winddata'],('WRF data for the wind at this time instant', None),'x'))
 
     z_ref = options['params']['wind']['z_ref']
     z0_air = options['params']['wind']['log_wind']['z0_air']
@@ -888,7 +890,16 @@ def get_u_at_altitude(options, zz):
     z_ref = options['params']['wind']['z_ref']
     z0_air = options['params']['wind']['log_wind']['z0_air']
     exp_ref = options['params']['wind']['power_wind']['exp_ref']
-    u = wind.get_speed(model, u_ref, z_ref, z0_air, exp_ref, zz)
+    
+    if model == 'WRF':
+        
+        WRF_heightsdata     = options['user_options']['wind']['WRF_heightsdata']
+        WRF_winddata        = options['user_options']['wind']['WRF_winddata']
+        u = wind.get_WRF_velocity(WRF_heightsdata,WRF_winddata, zz)
+
+    else:
+        u = wind.get_speed(model, u_ref, z_ref, z0_air, exp_ref, zz)
+    
 
     return u
 
